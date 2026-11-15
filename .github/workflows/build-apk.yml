@@ -42,8 +42,12 @@ jobs:
       - name: Compilar (debug)
         working-directory: ${{ steps.find.outputs.proj }}
         run: |
-          if [ -f ./gradlew ]; then chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
-          else gradle assembleDebug --no-daemon; fi
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --no-daemon --stacktrace --info
+          else
+            gradle assembleDebug --no-daemon --stacktrace --info
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
