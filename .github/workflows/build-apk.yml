@@ -1,0 +1,51 @@
+name: Build APK do zip mais recente
+
+on:
+  push:
+    paths: ['**.zip']        # roda quando um .zip é adicionado/alterado
+  workflow_dispatch:         # ou manualmente, pela aba Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # histórico completo, para achar o zip mais recente
+
+      - name: Localizar o zip mais recente e extrair
+        id: find
+        run: |
+          # zip adicionado/modificado por último no histórico do git
+          ZIP=$(git log --diff-filter=AM --name-only --pretty=format: -- '*.zip' | grep -m1 '\.zip$' || true)
+          [ -n "$ZIP" ] || { echo "Nenhum .zip encontrado no repositório"; exit 1; }
+          echo "Zip mais recente: $ZIP"
+          rm -rf _build && mkdir _build
+          unzip -q "$ZIP" -d _build
+          # pasta que contém o settings.gradle(.kts)
+          SETTINGS=$(find _build -name 'settings.gradle*' -not -path '*/__MACOSX/*' | head -1)
+          [ -n "$SETTINGS" ] || { echo "settings.gradle não encontrado dentro do zip"; exit 1; }
+          echo "proj=$(dirname "$SETTINGS")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Aceitar licenças do Android SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9   # o zip não traz gradle-wrapper.jar
+
+      - name: Compilar (debug)
+        working-directory: ${{ steps.find.outputs.proj }}
+        run: |
+          if [ -f ./gradlew ]; then chmod +x ./gradlew && ./gradlew assembleDebug --no-daemon
+          else gradle assembleDebug --no-daemon; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug
+          path: ${{ steps.find.outputs.proj }}/app/build/outputs/apk/debug/*.apk
